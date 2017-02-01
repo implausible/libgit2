@@ -69,6 +69,7 @@ static const IID IID_IInternetSecurityManager_mingw =
 typedef enum {
 	GIT_WINHTTP_AUTH_BASIC = 1,
 	GIT_WINHTTP_AUTH_NEGOTIATE = 2,
+	GIT_WINHTTP_AUTH_DIGEST = 4,
 } winhttp_authmechanism_t;
 
 typedef struct {
@@ -100,7 +101,7 @@ typedef struct {
 	HINTERNET connection;
 } winhttp_subtransport;
 
-static int apply_basic_credential_proxy(HINTERNET request, git_cred *cred)
+static int apply_credential_proxy(HINTERNET request, git_cred *cred, winhttp_authmechanism_t mechanism)
 {
 	git_cred_userpass_plaintext *c = (git_cred_userpass_plaintext *)cred;
 	wchar_t *user, *pass;
@@ -112,10 +113,19 @@ static int apply_basic_credential_proxy(HINTERNET request, git_cred *cred)
 	if ((error = git__utf8_to_16_alloc(&pass, c->password)) < 0)
 		return error;
 
-	if (!WinHttpSetCredentials(request, WINHTTP_AUTH_TARGET_PROXY, WINHTTP_AUTH_SCHEME_BASIC,
-	                           user, pass, NULL)) {
-		giterr_set(GITERR_OS, "failed to set proxy auth");
-		error = -1;
+	if (GIT_WINHTTP_AUTH_BASIC == mechanism) {
+		if (!WinHttpSetCredentials(request, WINHTTP_AUTH_TARGET_PROXY, WINHTTP_AUTH_SCHEME_BASIC,
+			user, pass, NULL)) {
+			giterr_set(GITERR_OS, "failed to set proxy auth");
+			error = -1;
+		}
+	}
+	else if (GIT_WINHTTP_AUTH_DIGEST == mechanism) {
+		if (!WinHttpSetCredentials(request, WINHTTP_AUTH_TARGET_PROXY, WINHTTP_AUTH_SCHEME_DIGEST,
+			user, pass, NULL)) {
+			giterr_set(GITERR_OS, "failed to set proxy auth");
+			error = -1;
+		}
 	}
 
 	git__free(user);
@@ -446,7 +456,7 @@ static int winhttp_stream_connect(winhttp_stream *s)
 
 		if (t->proxy_cred) {
 			if (t->proxy_cred->credtype == GIT_CREDTYPE_USERPASS_PLAINTEXT) {
-				if ((error = apply_basic_credential_proxy(s->request, t->proxy_cred)) < 0)
+				if ((error = apply_credential_proxy(s->request, t->proxy_cred, t->auth_mechanism)) < 0)
 					goto on_error;
 			}
 		}
@@ -596,6 +606,11 @@ static int parse_unauthorized_response(
 	if (WINHTTP_AUTH_SCHEME_BASIC & supported) {
 		*allowed_types |= GIT_CREDTYPE_USERPASS_PLAINTEXT;
 		*auth_mechanism = GIT_WINHTTP_AUTH_BASIC;
+	}
+
+	if (WINHTTP_AUTH_SCHEME_DIGEST & supported) {
+		*allowed_types |= GIT_CREDTYPE_USERPASS_PLAINTEXT;
+		*auth_mechanism = GIT_WINHTTP_AUTH_DIGEST;
 	}
 
 	if ((WINHTTP_AUTH_SCHEME_NTLM & supported) ||
@@ -1028,7 +1043,7 @@ replay:
 			/* TODO: extract the username from the url, no payload? */
 			if (t->owner->proxy.credentials) {
 				int cred_error = 1;
-				cred_error = t->owner->proxy.credentials(&t->proxy_cred, t->owner->proxy.url, NULL, allowed_types, NULL);
+				cred_error = t->owner->proxy.credentials(&t->proxy_cred, t->owner->proxy.url, NULL, allowed_types, t->owner->proxy.payload);
 
 				if (cred_error < 0)
 					return cred_error;
