@@ -1,0 +1,26 @@
+on:
+  push:
+    branches:
+      - repro/*
+
+name: Demonstrate performance regression
+
+jobs:
+  osx-demo:
+    name: "OSX Regression Demo"
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - name: Setup
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          cmake --build .
+
+      - name: Test
+        run: |
+          cd build
+          ./libgit2_clar -sonline::slow::clone
