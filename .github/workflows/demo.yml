@@ -23,4 +23,11 @@ jobs:
       - name: Test
         run: |
           cd build
-          ./libgit2_clar -sonline::slow::clone
+          time ./libgit2_clar -sonline::slow::clone
+          time ./libgit2_clar -sonline::slow::clone
+          time ./libgit2_clar -sonline::slow::clone
+          time ./libgit2_clar -sonline::slow::clone
+          time ./libgit2_clar -sonline::slow::clone
+          time ./libgit2_clar -sonline::slow::clone
+          time ./libgit2_clar -sonline::slow::clone
+          
