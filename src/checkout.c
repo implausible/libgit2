@@ -55,11 +55,10 @@ typedef struct {
 } checkout_buffers;
 
 enum {
-	ATTR_CACHE_MUTEX_INITIALIZED = 1,
-	COMPLETED_STEPS_MUTEX_INITIALIZED = 2,
-	INDEX_MUTEX_INITIALIZED = 4,
-	MKPATH_MUTEX_INITIALIZED = 8,
-	PERFDATA_MUTEX_INITIALIZED = 16
+	COMPLETED_STEPS_MUTEX_INITIALIZED = 1,
+	INDEX_MUTEX_INITIALIZED = 2,
+	MKPATH_MUTEX_INITIALIZED = 4,
+	PERFDATA_MUTEX_INITIALIZED = 8
 };
 
 typedef struct {
@@ -86,7 +85,6 @@ typedef struct {
 	git_checkout_perfdata perfdata;
 	git_strmap *mkdir_map;
 	git_attr_session attr_session;
-	git_mutex attr_cache_mutex;
 	git_mutex completed_steps_mutex;
 	git_mutex index_mutex;
 	git_mutex mkpath_mutex;
@@ -1570,13 +1568,13 @@ static int blob_content_to_file(
 	filter_opts.temp_buf = &buffers->tmp;
 
 	if (!data->opts.disable_filters) {
-		git_mutex_lock(&data->attr_cache_mutex);
+		git_mutex_lock(&data->index_mutex);
 
 		error = git_filter_list__load_ext(
 			&fl, data->repo, blob, hint_path,
 			GIT_FILTER_TO_WORKTREE, &filter_opts);
 
-		git_mutex_unlock(&data->attr_cache_mutex);
+		git_mutex_unlock(&data->index_mutex);
 
 		if (error) {
 			p_close(fd);
@@ -2659,9 +2657,6 @@ static void checkout_data_clear(checkout_data *data)
 
 	git_attr_session__free(&data->attr_session);
 
-	if (data->mutexes_initialized & ATTR_CACHE_MUTEX_INITIALIZED)
-		git_mutex_free(&data->attr_cache_mutex);
-
 	if (data->mutexes_initialized & COMPLETED_STEPS_MUTEX_INITIALIZED)
 		git_mutex_free(&data->completed_steps_mutex);
 
@@ -2697,11 +2692,6 @@ static int checkout_data_init(
 
 	data->repo = repo;
 	data->target = target;
-
-	if ((error = git_mutex_init(&data->attr_cache_mutex)) < 0)
-		goto cleanup;
-
-	data->mutexes_initialized |= ATTR_CACHE_MUTEX_INITIALIZED;
 
 	if ((error = git_mutex_init(&data->completed_steps_mutex)) < 0)
 		goto cleanup;
