@@ -734,7 +734,7 @@ static int generate_request(
 		git_buf_printf(buf, "Expect: 100-continue\r\n");
 
 	if ((error = apply_server_credentials(buf, client, request)) < 0 ||
-	    (error = apply_proxy_credentials(buf, client, request)) < 0)
+	    (!client->proxy_connected && (error = apply_proxy_credentials(buf, client, request)) < 0))
 		return error;
 
 	if (request->custom_headers) {
